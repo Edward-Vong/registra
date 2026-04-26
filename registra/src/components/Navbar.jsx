@@ -21,6 +21,7 @@ const styles = `
 
 export default function Navbar({ loggedIn = false, rightExtra = null }) {
   const navigate = useNavigate()
+
   return (
     <>
       <style>{styles}</style>
@@ -30,16 +31,18 @@ export default function Navbar({ loggedIn = false, rightExtra = null }) {
           <button className="nav-link" onClick={() => navigate('/about')}>how it works</button>
           <button className="nav-link" onClick={() => navigate('/upload')}>upload</button>
           <button className="nav-link">api</button>
+
           {loggedIn ? (
-            <>
-              <button className="nav-btn-outline" onClick={() => navigate('/dashboard')}>my portfolio</button>
-            </>
+            <button className="nav-btn-outline" onClick={() => navigate('/dashboard')}>
+              my portfolio
+            </button>
           ) : (
             <>
               <button className="nav-btn-outline" onClick={() => navigate('/login')}>sign in</button>
               <button className="nav-btn-primary" onClick={() => navigate('/register')}>get started</button>
             </>
           )}
+
           {rightExtra}
         </div>
       </nav>

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { useAuth } from '../context/AuthContext'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -35,23 +36,40 @@ const styles = `
 
 export default function Login() {
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
 
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/dashboard')
+    }
+  }, [user, loading, navigate])
+
   const handleLogin = async (e) => {
     e.preventDefault()
-    if (!email || !password) { setError('Please fill in all fields.'); return }
+    setError(null)
+
+    if (!email || !password) {
+      setError('Please fill in all fields.')
+      return
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password })
+
     if (error) setError(error.message)
     else navigate('/dashboard')
   }
 
   const handleGoogleLogin = async () => {
+    setError(null)
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: 'http://localhost:5173/dashboard' }
     })
+
     if (error) setError(error.message)
   }
 
