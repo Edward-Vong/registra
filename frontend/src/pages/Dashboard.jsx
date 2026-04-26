@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
+import { useAuth } from '../context/AuthContext'
+import { checkBackendHealth, fetchArtworksByArtist } from '../api'
+import { supabase } from '../supabase'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -26,7 +29,9 @@ const styles = `
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 48px; }
   .artwork-card { background: #fff; border: 1px solid #e0ddd6; border-radius: 4px; overflow: hidden; cursor: pointer; transition: transform 0.15s; }
   .artwork-card:hover { transform: translateY(-2px); }
-  .thumb { height: 140px; position: relative; }
+  .thumb { height: 180px; position: relative; overflow: hidden; background: #efece5; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb-fallback { width: 100%; height: 100%; }
   .thumb-1 { background: linear-gradient(135deg, #c8e6d4, #7bc4a0); }
   .thumb-2 { background: linear-gradient(135deg, #d4c8e6, #a07bc4); }
   .thumb-3 { background: linear-gradient(135deg, #e6d4c8, #c4a07b); }
@@ -34,6 +39,12 @@ const styles = `
   .thumb-5 { background: linear-gradient(135deg, #e6c8d4, #c47ba0); }
   .thumb-6 { background: linear-gradient(135deg, #d4e6c8, #a0c47b); }
   .badge { position: absolute; top: 8px; right: 8px; background: #2D7A5A; color: #fff; font-size: 10px; padding: 3px 9px; border-radius: 20px; }
+  .badge.pending { background: #8a6d3b; }
+  .badge.rejected { background: #c0392b; }
+  .card-status { font-size: 11px; margin-top: 6px; }
+  .card-status.pending { color: #8a6d3b; }
+  .card-status.verified { color: #2D7A5A; }
+  .card-status.rejected { color: #c0392b; }
   .card-body { padding: 14px 16px; }
   .card-title { font-size: 13px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
   .card-date { font-size: 11px; color: #aaa; margin-bottom: 6px; }
@@ -47,22 +58,63 @@ const styles = `
   .tier-badge { display: inline-flex; align-items: center; gap: 6px; background: #e8f5ef; color: #2D7A5A; font-size: 12px; padding: 4px 12px; border-radius: 20px; font-weight: 500; }
 `
 
-const artworks = [
-  { title: 'Forest Study No. 3', date: 'Apr 18, 2026', hash: 'a3f8...c21d', cls: 'thumb-1' },
-  { title: 'Neon Botanica', date: 'Mar 2, 2026', hash: 'b19e...77fa', cls: 'thumb-2' },
-  { title: 'Character Sheet 01', date: 'Jan 14, 2026', hash: 'f402...9b3c', cls: 'thumb-3' },
-  { title: 'Urban Sketch #7', date: 'Dec 3, 2025', hash: 'c881...d4ae', cls: 'thumb-4' },
-  { title: 'Portrait Study', date: 'Nov 20, 2025', hash: 'e230...ff12', cls: 'thumb-5' },
-  { title: 'Abstract No. 1', date: 'Oct 5, 2025', hash: '9b44...7c01', cls: 'thumb-6' },
-]
+const thumbClasses = ['thumb-1', 'thumb-2', 'thumb-3', 'thumb-4', 'thumb-5', 'thumb-6']
+
+function formatDate(value) {
+  if (!value) return 'Unknown date'
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function shortHash(hash) {
+  if (!hash) return 'n/a'
+  return `${hash.slice(0, 6)}...${hash.slice(-4)}`
+}
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const [artworks, setArtworks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [backendOnline, setBackendOnline] = useState(false)
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      if (!user?.id) return
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        await checkBackendHealth()
+        setBackendOnline(true)
+
+        const { data: { session } } = await supabase.auth.getSession()
+        const accessToken = session?.access_token
+        if (!accessToken) throw new Error('Not authenticated')
+
+        const rows = await fetchArtworksByArtist(user.id, accessToken)
+        setArtworks(Array.isArray(rows) ? rows : [])
+      } catch (loadError) {
+        setBackendOnline(false)
+        setError(loadError.message || 'Failed to load your artworks.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboardData()
+  }, [user?.id])
+
   return (
     <>
       <style>{styles}</style>
       <div className="dash">
-        <Navbar loggedIn={true}/>
+        <Navbar />
         <div className="container">
           <div className="dash-header">
             <div>
@@ -73,23 +125,54 @@ export default function Dashboard() {
           </div>
 
           <div className="stats">
-            <div className="stat"><div className="stat-label">Registered works</div><div className="stat-value">12</div><div className="stat-note">+2 this month</div></div>
-            <div className="stat"><div className="stat-label">API calls</div><div className="stat-value">340</div><div className="stat-note">last 30 days</div></div>
-            <div className="stat"><div className="stat-label">Profile views</div><div className="stat-value">1.2k</div><div className="stat-note">last 30 days</div></div>
+            <div className="stat"><div className="stat-label">Registered works</div><div className="stat-value">{artworks.length}</div><div className="stat-note">live from backend</div></div>
+            <div className="stat"><div className="stat-label">Backend</div><div className="stat-value">{backendOnline ? 'On' : 'Off'}</div><div className="stat-note">{backendOnline ? 'connected' : 'unreachable'}</div></div>
+            <div className="stat"><div className="stat-label">Artist ID</div><div className="stat-value" style={{ fontSize: '18px' }}>{user?.id ? `${user.id.slice(0, 8)}...` : 'n/a'}</div><div className="stat-note">authenticated user</div></div>
           </div>
 
           <div className="section-header">
-            <div className="section-title">Verified works</div>
+            <div className="section-title">Registered works</div>
             <button className="btn-primary" style={{ fontSize: '12px', padding: '6px 14px' }} onClick={() => navigate('/upload')}>+ add new</button>
           </div>
+
+          {error && (
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#c0392b' }}>
+              {error}
+            </div>
+          )}
+
+          {loading && (
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#777' }}>
+              Loading artworks...
+            </div>
+          )}
+
           <div className="grid">
+            {!loading && artworks.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', fontSize: '13px', color: '#777' }}>
+                No artworks registered yet. Upload your first one.
+              </div>
+            )}
+
             {artworks.map((a, i) => (
-              <div className="artwork-card" key={i}>
-                <div className={`thumb ${a.cls}`}><div className="badge">✓ verified</div></div>
+              <div className="artwork-card" key={a.id || i} onClick={() => a.certificate_id && navigate(`/portfolio/${a.certificate_id}`)}>
+                <div className="thumb">
+                  {a.artwork_url ? (
+                    <img src={a.artwork_url} alt={a.title || 'Artwork preview'} />
+                  ) : (
+                    <div className={`thumb-fallback ${thumbClasses[i % thumbClasses.length]}`} />
+                  )}
+                  <div className={`badge ${a.certificate_status === 'pending' ? 'pending' : a.certificate_status === 'rejected' ? 'rejected' : ''}`}>
+                    {a.certificate_status === 'pending' ? 'pending' : a.certificate_status === 'rejected' ? 'rejected' : 'verified'}
+                  </div>
+                </div>
                 <div className="card-body">
                   <div className="card-title">{a.title}</div>
-                  <div className="card-date">{a.date}</div>
-                  <div className="card-hash">{a.hash}</div>
+                  <div className="card-date">{formatDate(a.created_at)}</div>
+                  <div className="card-hash">{shortHash(a.final_file_hash)}</div>
+                  {a.certificate_status === 'pending' && <div className="card-status pending">Waiting to be verified by admin</div>}
+                  {a.certificate_status === 'verified' && <div className="card-status verified">Verified and publicly trusted</div>}
+                  {a.certificate_status === 'rejected' && <div className="card-status rejected">Rejected{a.certificate_rejection_reason ? `: ${a.certificate_rejection_reason}` : ''}</div>}
                 </div>
               </div>
             ))}
@@ -104,7 +187,7 @@ export default function Dashboard() {
             <div>
               <div className="api-code">
                 <div className="api-comment"># verify by hash</div>
-                <div>GET /api/verify?artist=@artist</div>
+                <div>GET /verify?hash=&lt;artwork_hash&gt;</div>
                 <br />
                 <div className="api-comment"># returns</div>
                 <div>{'{ "verified": true, ... }'}</div>

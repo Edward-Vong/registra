@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
+import { fetchRecentVerified } from '../api'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -43,10 +44,18 @@ const styles = `
   .artwork-card:hover { transform: translateX(4px); }
   .artwork-thumb {
     width: 52px; height: 52px; border-radius: 3px; flex-shrink: 0;
+    overflow: hidden; background: #ebe7df;
   }
+  .artwork-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .thumb-1 { background: linear-gradient(135deg, #c8e6d4, #7bc4a0); }
   .thumb-2 { background: linear-gradient(135deg, #d4c8e6, #a07bc4); }
   .thumb-3 { background: linear-gradient(135deg, #e6d4c8, #c4a07b); }
+  .thumb-4 { background: linear-gradient(135deg, #c8d4e6, #7ba0c4); }
+  .thumb-5 { background: linear-gradient(135deg, #e6c8d4, #c47ba0); }
+  .skeleton { background: linear-gradient(90deg, #e8e5de 25%, #f0ede6 50%, #e8e5de 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 3px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .skeleton-name { height: 13px; width: 60%; margin-bottom: 6px; }
+  .skeleton-hash { height: 11px; width: 40%; }
   .artwork-meta { flex: 1; }
   .artwork-name { font-size: 13px; font-weight: 500; color: #1a1a1a; margin-bottom: 3px; }
   .artwork-hash { font-size: 11px; color: #999; font-family: monospace; }
@@ -85,16 +94,22 @@ export default function Homepage() {
   const navigate = useNavigate()
   const { user, loading } = useAuth()
   const [mounted, setMounted] = useState(false)
+  const [recentWorks, setRecentWorks] = useState(null) // null = loading, [] = empty
+
+  const thumbClasses = ['thumb-1', 'thumb-2', 'thumb-3', 'thumb-4', 'thumb-5']
 
   useEffect(() => {
     setMounted(true)
+    fetchRecentVerified()
+      .then(data => setRecentWorks(data))
+      .catch(() => setRecentWorks([]))
   }, [])
 
   return (
     <>
       <style>{styles}</style>
       <div className="home" style={{ opacity: mounted ? 1 : 0, transition: 'opacity 0.4s' }}>
-        {!loading && <Navbar loggedIn={!!user} />}
+        {!loading && <Navbar />}
 
         <section className="hero">
           <div className="hero-left">
@@ -122,20 +137,33 @@ export default function Homepage() {
 
           <div className="hero-right">
             <div className="card-label">recently verified</div>
-            {[
-              { name: 'Forest Study No. 3', hash: 'a3f8...c21d', cls: 'thumb-1' },
-              { name: 'Neon Botanica', hash: 'b19e...77fa', cls: 'thumb-2' },
-              { name: 'Character Sheet 01', hash: 'f402...9b3c', cls: 'thumb-3' },
-            ].map((art, i) => (
-              <div className="artwork-card" key={i}>
-                <div className={`artwork-thumb ${art.cls}`} />
-                <div className="artwork-meta">
-                  <div className="artwork-name">{art.name}</div>
-                  <div className="artwork-hash">{art.hash}</div>
+            {recentWorks === null ? (
+              // Loading skeletons
+              [0, 1, 2].map(i => (
+                <div className="artwork-card" key={i}>
+                  <div className="artwork-thumb skeleton" />
+                  <div className="artwork-meta">
+                    <div className="skeleton skeleton-name" />
+                    <div className="skeleton skeleton-hash" />
+                  </div>
                 </div>
-                <div className="verified-pill">✓ verified</div>
-              </div>
-            ))}
+              ))
+            ) : recentWorks.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#999', padding: '24px 0' }}>No verified works yet.</div>
+            ) : (
+              recentWorks.map((art, i) => (
+                <div className="artwork-card" key={i}>
+                  <div className={`artwork-thumb ${art.artwork_url ? '' : thumbClasses[i % thumbClasses.length]}`}>
+                    {art.artwork_url ? <img src={art.artwork_url} alt={art.title || 'Artwork preview'} /> : null}
+                  </div>
+                  <div className="artwork-meta">
+                    <div className="artwork-name">{art.title}</div>
+                    <div className="artwork-hash">{art.hash ? art.hash.slice(0, 4) + '...' + art.hash.slice(-4) : '—'}</div>
+                  </div>
+                  <div className="verified-pill">✓ verified</div>
+                </div>
+              ))
+            )}
           </div>
         </section>
 

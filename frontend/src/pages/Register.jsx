@@ -34,7 +34,7 @@ const styles = `
 export default function Register() {
   const navigate = useNavigate()
   const { user, loading } = useAuth()
-  const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '' })
+  const [form, setForm] = useState({ username: '', email: '', password: '' })
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -64,15 +64,14 @@ export default function Register() {
       password: form.password,
       options: {
         data: {
-          first_name: form.firstName,
-          last_name: form.lastName,
           username: form.username,
+          name: form.username,
         }
       }
     })
 
     if (error) setError(error.message)
-    else navigate('/dashboard')
+    else navigate('/verify-email')
   }
 
   return (
@@ -91,19 +90,9 @@ export default function Register() {
             <p className="auth-sub">Start certifying your art in under 2 minutes.</p>
             {error && <div className="error">{error}</div>}
             <form onSubmit={handleRegister}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>First name</label>
-                  <input type="text" placeholder="Jane" value={form.firstName} onChange={update('firstName')} />
-                </div>
-                <div className="form-group">
-                  <label>Last name</label>
-                  <input type="text" placeholder="Doe" value={form.lastName} onChange={update('lastName')} />
-                </div>
-              </div>
               <div className="form-group">
                 <label>Username</label>
-                <input type="text" placeholder="@yourname" value={form.username} onChange={update('username')} />
+                <input type="text" placeholder="your public identity" value={form.username} onChange={update('username')} />
               </div>
               <div className="form-group">
                 <label>Email</label>

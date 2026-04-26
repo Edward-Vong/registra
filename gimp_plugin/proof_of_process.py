@@ -33,11 +33,18 @@ import os
 import datetime
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "site-packages"))
+# Add bundled site-packages to path (use absolute path)
+plugin_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(plugin_dir, "site-packages"))
 
-from Crypto.PublicKey import RSA
-from Crypto.Signature import PKCS1_v1_5
-from Crypto.Hash import SHA256
+try:
+    from Crypto.PublicKey import RSA
+    from Crypto.Signature import PKCS1_v1_5
+    from Crypto.Hash import SHA256
+except ImportError as e:
+    print(f"[proof_of_process] Import error: {e}")
+    print(f"[proof_of_process] sys.path: {sys.path}")
+    raise
 
 PLUGIN_PROC = "plug-in-export-with-authenticity"
 PLUGIN_BINARY = "proof-of-process"
@@ -144,11 +151,15 @@ def _hash_bytes(data):
     return h.hexdigest()
 
 
-def _sign_image_bytes(private_pem, image_bytes):
+def _canonical_json_bytes(payload):
+    return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _sign_payload(private_pem, payload):
     key = _rsa_import(private_pem)
     signer = PKCS1_v1_5.new(key)
-    image_hash_obj = SHA256.new(image_bytes)
-    signature = signer.sign(image_hash_obj)
+    digest = SHA256.new(_canonical_json_bytes(payload))
+    signature = signer.sign(digest)
     return base64.b64encode(signature).decode("ascii")
 
 
@@ -156,17 +167,44 @@ def _utc_timestamp():
     return datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
-def _build_certificate_dict(image_hash, signature_b64, public_pem, png_path):
+def _normalize_pem_text(public_pem):
+    return _as_text(public_pem).replace("\r\n", "\n").strip() + "\n"
+
+
+def _key_fingerprint(public_pem):
+    return hashlib.sha256(_normalize_pem_text(public_pem).encode("utf-8")).hexdigest()
+
+
+def _build_signed_payload(image_hash, proof_hash, challenge_id, challenge_nonce, png_path, proof_path, public_pem):
     return {
-        "version": "1.0",
+        "image_hash": image_hash,
+        "proof_hash": proof_hash,
+        "challenge_id": challenge_id,
+        "challenge_nonce": challenge_nonce,
+        "timestamp_utc": _utc_timestamp(),
+        "image_file": os.path.basename(png_path),
+        "proof_file": os.path.basename(proof_path) if proof_path else None,
+        "key_fingerprint": _key_fingerprint(public_pem),
+    }
+
+
+def _build_certificate_dict(image_hash, proof_hash, signature_b64, public_pem, png_path, proof_path, challenge_id, challenge_nonce, signed_payload):
+    return {
+        "version": "2.0",
         "plugin": "Proof of Process",
         "hash_algorithm": "SHA-256",
         "signature_algorithm": "RSA-PKCS1-v1_5",
-        "timestamp_utc": _utc_timestamp(),
+        "timestamp_utc": signed_payload["timestamp_utc"],
         "image_file": os.path.basename(png_path),
         "image_hash": image_hash,
+        "proof_file": os.path.basename(proof_path) if proof_path else None,
+        "proof_hash": proof_hash,
+        "challenge_id": challenge_id,
+        "challenge_nonce": challenge_nonce,
+        "key_fingerprint": _key_fingerprint(public_pem),
         "signature": signature_b64,
-        "public_key_pem": _as_text(public_pem),
+        "public_key_pem": _normalize_pem_text(public_pem),
+        "signed_payload": signed_payload,
     }
 
 
@@ -209,7 +247,7 @@ def _export_flattened_png(image, output_file):
         dup.delete()
 
 
-def _run_export(procedure, image, output_file):
+def _run_export(procedure, image, output_file, proof_file, challenge_id, challenge_nonce):
     try:
         output_file = _normalize_output_file(output_file)
         if output_file is None:
@@ -219,19 +257,41 @@ def _run_export(procedure, image, output_file):
         if not output_path:
             raise RuntimeError("Could not resolve a local PNG path.")
 
+        proof_path = proof_file.get_path() if proof_file is not None else None
+        if not proof_path:
+            raise RuntimeError("Please choose a proof file to bind into the certificate.")
+        if not challenge_id or not challenge_nonce:
+            raise RuntimeError("Challenge ID and challenge nonce are required.")
+
         private_pem, public_pem = _ensure_keys()
 
         _export_flattened_png(image, output_file)
 
         png_bytes = _read_binary(output_path)
+        proof_bytes = _read_binary(proof_path)
         image_hash = _hash_bytes(png_bytes)
-        signature_b64 = _sign_image_bytes(private_pem, png_bytes)
+        proof_hash = _hash_bytes(proof_bytes)
+        signed_payload = _build_signed_payload(
+            image_hash=image_hash,
+            proof_hash=proof_hash,
+            challenge_id=challenge_id,
+            challenge_nonce=challenge_nonce,
+            png_path=output_path,
+            proof_path=proof_path,
+            public_pem=public_pem,
+        )
+        signature_b64 = _sign_payload(private_pem, signed_payload)
 
         cert_data = _build_certificate_dict(
             image_hash=image_hash,
+            proof_hash=proof_hash,
             signature_b64=signature_b64,
             public_pem=public_pem,
             png_path=output_path,
+            proof_path=proof_path,
+            challenge_id=challenge_id,
+            challenge_nonce=challenge_nonce,
+            signed_payload=signed_payload,
         )
         cert_path = _write_certificate(output_path, cert_data)
 
@@ -252,14 +312,17 @@ def export_with_authenticity_run(procedure, run_mode, image, drawables, config, 
             config.set_property("output-png-file", _default_output_file(image))
 
         dialog = GimpUi.ProcedureDialog.new(procedure, config, "Export with Authenticity")
-        dialog.fill(["output-png-file"])
+        dialog.fill(["output-png-file", "proof-file", "challenge-id", "challenge-nonce"])
         if not dialog.run():
             dialog.destroy()
             return procedure.new_return_values(Gimp.PDBStatusType.CANCEL, None)
         dialog.destroy()
 
     output_file = config.get_property("output-png-file")
-    return _run_export(procedure, image, output_file)
+    proof_file = config.get_property("proof-file")
+    challenge_id = config.get_property("challenge-id")
+    challenge_nonce = config.get_property("challenge-nonce")
+    return _run_export(procedure, image, output_file, proof_file, challenge_id, challenge_nonce)
 
 
 class ProofOfProcessPlugin(Gimp.PlugIn):
@@ -295,6 +358,29 @@ class ProofOfProcessPlugin(Gimp.PlugIn):
                 "PNG export target",
                 Gimp.FileChooserAction.SAVE,
                 False,
+                None,
+                GObject.ParamFlags.READWRITE,
+            )
+            procedure.add_file_argument(
+                "proof-file",
+                "Proof file",
+                "Proof asset to bind into the certificate",
+                Gimp.FileChooserAction.OPEN,
+                False,
+                None,
+                GObject.ParamFlags.READWRITE,
+            )
+            procedure.add_string_argument(
+                "challenge-id",
+                "Challenge ID",
+                "Challenge ID from the web app upload screen",
+                None,
+                GObject.ParamFlags.READWRITE,
+            )
+            procedure.add_string_argument(
+                "challenge-nonce",
+                "Challenge nonce",
+                "Challenge nonce from the web app upload screen",
                 None,
                 GObject.ParamFlags.READWRITE,
             )

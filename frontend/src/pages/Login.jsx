@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 
@@ -36,16 +36,19 @@ const styles = `
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, loading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
 
+  const destination = location.state?.from || '/dashboard'
+
   useEffect(() => {
     if (!loading && user) {
-      navigate('/dashboard')
+      navigate(destination, { replace: true })
     }
-  }, [user, loading, navigate])
+  }, [user, loading, navigate, destination])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -59,7 +62,7 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) setError(error.message)
-    else navigate('/dashboard')
+    else navigate(destination, { replace: true })
   }
 
   const handleGoogleLogin = async () => {
