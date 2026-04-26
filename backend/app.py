@@ -395,6 +395,7 @@ def register_with_cert():
     file = request.files["file"]
     proof_file = request.files.get("proof_file")
     title = request.form.get("title", "").strip()
+    proof_type = request.form.get("proof_type", "").strip()
     cert_str = request.form.get("cert", "")
 
     if not title:
@@ -485,10 +486,20 @@ def register_with_cert():
         return jsonify({"error": "Signed payload contents do not match the uploaded assets or challenge"}), 400
 
     artwork_asset = None
+    proof_asset = None
     try:
         artwork_asset = save_uploaded_bytes(file.filename, image_bytes, "artwork", "artworks")
     except Exception as exc:
         return jsonify({"error": f"Failed to store upload assets: {exc}"}), 500
+
+    if proof_file and proof_file.filename:
+        try:
+            proof_bytes = proof_file.read()
+            proof_asset = save_uploaded_bytes(proof_file.filename, proof_bytes, "proof", "proofs")
+            if proof_type:
+                proof_asset["type"] = proof_type
+        except Exception as exc:
+            return jsonify({"error": f"Failed to store proof file: {exc}"}), 500
 
     # 2. Verify RSA signature
     try:
@@ -515,7 +526,7 @@ def register_with_cert():
             "challenge_nonce": cert.get("challenge_nonce"),
         },
         "artwork": artwork_asset,
-        "proof": None,
+        "proof": proof_asset,
     }
 
     # 3. Insert artwork

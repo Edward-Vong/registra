@@ -96,7 +96,9 @@ export default function ArtworkDetail() {
 
   const artworkUrl = certData?.artwork?.url || null
   const proofUrl = certData?.proof?.url || null
-  const proofType = certData?.proof?.type || null
+  const PROOF_TYPE_LABELS = { wip: 'WIP screenshots', timelapse: 'Timelapse / recording', layered: 'Layered file' }
+  const proofTypeRaw = certData?.proof?.type || null
+  const proofType = (proofTypeRaw && PROOF_TYPE_LABELS[proofTypeRaw]) || proofTypeRaw || null
   const proofFileName = certData?.proof?.file_name || null
   const artistUsername = user.username || certData?.submitted_by?.username || 'Unknown artist'
 
