@@ -3,9 +3,14 @@ from flask_cors import CORS
 from supabase_client import supabase
 import hashlib
 import datetime
+import requests as req
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 
 # ------------------------
@@ -14,6 +19,27 @@ CORS(app)
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Backend is running"})
+
+
+# ------------------------
+# REVERSE SEARCH
+# ------------------------
+@app.route("/reverse-search", methods=["POST", "OPTIONS"])
+def reverse_search():
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
+    image_url = request.json.get("image_url")
+    if not image_url:
+        return jsonify({"error": "Missing image_url"}), 400
+
+    response = req.get("https://serpapi.com/search", params={
+        "engine": "google_reverse_image",
+        "image_url": image_url,
+        "api_key": os.getenv("SERPAPI_KEY")
+    })
+
+    return jsonify(response.json())
 
 
 # ------------------------
@@ -102,6 +128,7 @@ def get_certificate(certificate_id):
         .execute()
 
     return jsonify(result.data)
+
 
 # ------------------------
 # VERIFY
