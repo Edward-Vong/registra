@@ -288,7 +288,7 @@ export default function About() {
 
         <footer className="footer">
           <div className="footer-logo">Regist<span>ra</span></div>
-          <div className="footer-note">© 2026 Registra - art certification authority</div>
+          <div className="footer-note">2026 Registra - art certification authority</div>
         </footer>
       </div>
     </>
