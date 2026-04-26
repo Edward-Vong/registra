@@ -14,6 +14,9 @@ import ProtectedRoute from './components/ProtectedRoute'
 import VerifiedRoute from './components/VerifiedRoute'
 import AdminRoute from './components/AdminRoute'
 import ReverseSearch from './pages/ReverseSearch'
+import Api from './pages/Api'
+import Gallery from './pages/Gallery'
+import ArtistProfile from './pages/ArtistProfile'
 
 export default function App() {
   return (
@@ -23,6 +26,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/about" element={<About />} />
+        <Route path="/gallery" element={<Gallery />} />
+        <Route path="/artist/:username" element={<ArtistProfile />} />
+        <Route path="/api" element={<Api />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/reset-key" element={<ResetKey />} />
         <Route path="/dashboard" element={

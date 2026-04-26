@@ -14,6 +14,8 @@ import uuid
 from werkzeug.utils import secure_filename
 import resend
 import requests
+import mimetypes
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 CORS(app)
@@ -38,6 +40,42 @@ def parse_json_value(value):
         except Exception:
             return None
     return None
+
+
+def normalize_username(value):
+    if not value or not isinstance(value, str):
+        return None
+    return value.strip().lower()
+
+
+def extract_social_links(user_meta):
+    user_meta = user_meta or {}
+    socials = {
+        "website": user_meta.get("social_website") or user_meta.get("website"),
+        "instagram": user_meta.get("social_instagram") or user_meta.get("instagram"),
+        "x": user_meta.get("social_x") or user_meta.get("x") or user_meta.get("twitter"),
+        "artstation": user_meta.get("social_artstation") or user_meta.get("artstation"),
+    }
+    return {k: v for k, v in socials.items() if isinstance(v, str) and v.strip()}
+
+
+def get_public_user_profile(user_id):
+    if not user_id:
+        return {}
+    try:
+        admin_user_resp = supabase_admin.auth.admin.get_user_by_id(user_id)
+        admin_user = getattr(admin_user_resp, "user", None)
+        if not admin_user:
+            return {}
+        user_meta = getattr(admin_user, "user_metadata", {}) or {}
+        username = user_meta.get("username") or user_meta.get("name") or getattr(admin_user, "email", None)
+        return {
+            "id": user_id,
+            "username": username,
+            "social_links": extract_social_links(user_meta),
+        }
+    except Exception:
+        return {}
 
 
 def utc_now():
@@ -177,6 +215,110 @@ def verify_signature_for_payload(public_key_pem, signature_b64, payload):
     digest = CryptoSHA256.new(canonical_json_bytes(payload))
     sig_bytes = base64.b64decode(signature_b64)
     return verifier.verify(digest, sig_bytes)
+
+
+def get_active_upload_challenge(user_id):
+    result = supabase_admin.table("upload_challenges") \
+        .select("id, nonce, expires_at, used_at, created_at") \
+        .eq("user_id", user_id) \
+        .is_("used_at", "null") \
+        .order("created_at", desc=True) \
+        .limit(1) \
+        .execute()
+
+    rows = result.data or []
+    if not rows:
+        return None
+
+    challenge = rows[0]
+    expires_at = parse_datetime_value(challenge.get("expires_at"))
+    if expires_at and expires_at > utc_now():
+        return challenge
+
+    # Expired but unused challenge should not block creating a new one.
+    try:
+        supabase_admin.table("upload_challenges") \
+            .update({"used_at": serialize_datetime_iso(utc_now())}) \
+            .eq("id", challenge.get("id")) \
+            .execute()
+    except Exception:
+        pass
+    return None
+
+
+def load_image_bytes_from_asset_url(asset_url):
+    if not asset_url or not isinstance(asset_url, str):
+        raise ValueError("Missing artwork URL")
+
+    marker = "/uploads/"
+    idx = asset_url.find(marker)
+    if idx != -1:
+        rel_path = asset_url[idx + len(marker):]
+        parts = rel_path.split("/", 1)
+        if len(parts) == 2:
+            folder, file_name = parts
+            if folder == "artworks":
+                local_path = os.path.join(ARTWORK_UPLOAD_DIR, file_name)
+            elif folder == "proofs":
+                local_path = os.path.join(PROOF_UPLOAD_DIR, file_name)
+            else:
+                local_path = None
+
+            if local_path and os.path.isfile(local_path):
+                with open(local_path, "rb") as fh:
+                    content = fh.read()
+                mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+                return file_name, content, mime_type
+
+    remote_res = requests.get(asset_url, timeout=30)
+    remote_res.raise_for_status()
+    parsed = urlparse(asset_url)
+    file_name = os.path.basename(parsed.path) or "artwork"
+    mime_type = remote_res.headers.get("Content-Type") or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+    return file_name, remote_res.content, mime_type
+
+
+def run_reverse_image_search(file_name, image_bytes, mime_type):
+    upload_res = requests.post(
+        "https://api.imgbb.com/1/upload",
+        params={"key": IMGBB_KEY},
+        files={
+            "image": (
+                file_name,
+                image_bytes,
+                mime_type or "application/octet-stream",
+            )
+        },
+        timeout=30,
+    )
+    upload_res.raise_for_status()
+    upload_data = upload_res.json()
+
+    if not upload_data.get("success"):
+        raise RuntimeError("Image upload failed")
+
+    image_url = upload_data["data"]["url"]
+
+    search_res = requests.get(
+        "https://serpapi.com/search",
+        params={
+            "engine": "google_reverse_image",
+            "image_url": image_url,
+            "api_key": SERPAPI_KEY,
+        },
+        timeout=30,
+    )
+    search_res.raise_for_status()
+    search_data = search_res.json()
+
+    image_results = search_data.get("image_results", [])
+
+    return {
+        "success": True,
+        "uploaded_image_url": image_url,
+        "matches_found": len(image_results),
+        "image_results": image_results,
+    }
 
 
 # ------------------------
@@ -494,7 +636,14 @@ def create_upload_challenge():
         return jsonify({"error": str(e)}), 401
 
     try:
-        # TOFU: No need to check for existing key — it will register on first upload
+        active = get_active_upload_challenge(user.id)
+        if active:
+            return jsonify({
+                "challenge_id": active.get("id"),
+                "nonce": active.get("nonce"),
+                "expires_at": active.get("expires_at"),
+            })
+
         challenge_id = str(uuid.uuid4())
         nonce = secrets.token_hex(16)
         expires_at = utc_now() + datetime.timedelta(minutes=20)
@@ -504,7 +653,6 @@ def create_upload_challenge():
             "nonce": nonce,
             "created_at": serialize_datetime_iso(utc_now()),
             "expires_at": serialize_datetime_iso(expires_at),
-            "used_at": None,
         }
         supabase_admin.table("upload_challenges").insert(payload).execute()
         return jsonify({
@@ -513,6 +661,17 @@ def create_upload_challenge():
             "expires_at": serialize_datetime_iso(expires_at),
         })
     except Exception as exc:
+        # Fallback: if insertion failed due to race/constraint, return active challenge.
+        try:
+            active = get_active_upload_challenge(user.id)
+            if active:
+                return jsonify({
+                    "challenge_id": active.get("id"),
+                    "nonce": active.get("nonce"),
+                    "expires_at": active.get("expires_at"),
+                })
+        except Exception:
+            pass
         return jsonify({"error": str(exc)}), 500
 
 
@@ -738,6 +897,149 @@ def recent_verified():
                 })
 
         return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/gallery/verified", methods=["GET"])
+def gallery_verified():
+    try:
+        raw_limit = request.args.get("limit", "36")
+        try:
+            limit = max(1, min(int(raw_limit), 100))
+        except Exception:
+            limit = 36
+
+        certs = supabase_admin.table("certificates") \
+            .select("id, artwork_id, verified_at, cert_data") \
+            .eq("status", "verified") \
+            .order("verified_at", desc=True) \
+            .limit(limit) \
+            .execute()
+
+        cert_rows = certs.data or []
+        if not cert_rows:
+            return jsonify([])
+
+        artwork_ids = [c.get("artwork_id") for c in cert_rows if c.get("artwork_id")]
+        artworks = supabase_admin.table("artworks") \
+            .select("id, title, artist_id, final_file_hash") \
+            .in_("id", artwork_ids) \
+            .execute()
+        artwork_map = {a.get("id"): a for a in (artworks.data or [])}
+
+        user_cache = {}
+        result = []
+        for cert in cert_rows:
+            art = artwork_map.get(cert.get("artwork_id"))
+            if not art:
+                continue
+
+            cert_data = parse_json_value(cert.get("cert_data")) or {}
+            submitted_by = cert_data.get("submitted_by") or {}
+            artist_id = art.get("artist_id") or submitted_by.get("id")
+
+            if artist_id and artist_id not in user_cache:
+                user_cache[artist_id] = get_public_user_profile(artist_id)
+            user_profile = user_cache.get(artist_id, {})
+
+            artist_username = user_profile.get("username") or submitted_by.get("username") or "unknown"
+
+            result.append({
+                "certificate_id": cert.get("id"),
+                "verified_at": cert.get("verified_at"),
+                "title": art.get("title") or "Untitled",
+                "hash": art.get("final_file_hash"),
+                "artwork_url": ((cert_data.get("artwork") or {}).get("url")),
+                "artist": {
+                    "id": artist_id,
+                    "username": artist_username,
+                },
+            })
+
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/artists/<username>", methods=["GET"])
+def artist_public_profile(username):
+    requested = normalize_username(username)
+    if not requested:
+        return jsonify({"error": "Invalid artist username"}), 400
+
+    try:
+        certs = supabase_admin.table("certificates") \
+            .select("id, artwork_id, verified_at, cert_data") \
+            .eq("status", "verified") \
+            .order("verified_at", desc=True) \
+            .limit(300) \
+            .execute()
+
+        cert_rows = certs.data or []
+        if not cert_rows:
+            return jsonify({"error": "Artist not found"}), 404
+
+        artwork_ids = [c.get("artwork_id") for c in cert_rows if c.get("artwork_id")]
+        artworks = supabase_admin.table("artworks") \
+            .select("id, title, artist_id, final_file_hash") \
+            .in_("id", artwork_ids) \
+            .execute()
+        artwork_map = {a.get("id"): a for a in (artworks.data or [])}
+
+        matching_rows = []
+        selected_artist_id = None
+
+        for cert in cert_rows:
+            cert_data = parse_json_value(cert.get("cert_data")) or {}
+            submitted_by = cert_data.get("submitted_by") or {}
+            submitted_username = normalize_username(submitted_by.get("username"))
+            art = artwork_map.get(cert.get("artwork_id")) or {}
+
+            if submitted_username == requested:
+                artist_id = art.get("artist_id") or submitted_by.get("id")
+                if not selected_artist_id and artist_id:
+                    selected_artist_id = artist_id
+                matching_rows.append((cert, cert_data, art, submitted_by))
+
+        if not matching_rows:
+            return jsonify({"error": "Artist not found"}), 404
+
+        if not selected_artist_id:
+            selected_artist_id = (matching_rows[0][3] or {}).get("id")
+
+        profile = get_public_user_profile(selected_artist_id) if selected_artist_id else {}
+        profile_username = profile.get("username") or matching_rows[0][3].get("username") or username
+
+        artworks_payload = []
+        for cert in cert_rows:
+            cert_data = parse_json_value(cert.get("cert_data")) or {}
+            art = artwork_map.get(cert.get("artwork_id")) or {}
+            submitted_by = cert_data.get("submitted_by") or {}
+
+            if selected_artist_id:
+                if art.get("artist_id") != selected_artist_id:
+                    continue
+            else:
+                if normalize_username(submitted_by.get("username")) != requested:
+                    continue
+
+            artworks_payload.append({
+                "certificate_id": cert.get("id"),
+                "verified_at": cert.get("verified_at"),
+                "title": art.get("title") or "Untitled",
+                "hash": art.get("final_file_hash"),
+                "artwork_url": ((cert_data.get("artwork") or {}).get("url")),
+            })
+
+        return jsonify({
+            "artist": {
+                "id": selected_artist_id,
+                "username": profile_username,
+                "social_links": profile.get("social_links") or {},
+            },
+            "verified_artworks": artworks_payload,
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
@@ -1022,52 +1324,67 @@ def reverse_search():
         image_bytes = image_file.read()
         if not image_bytes:
             return jsonify({"error": "Empty file"}), 400
-
-        # Step 1: upload to imgbb
-        upload_res = requests.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": IMGBB_KEY},
-            files={
-                "image": (
-                    image_file.filename,
-                    image_bytes,
-                    image_file.mimetype or "application/octet-stream",
-                )
-            },
-            timeout=30,
+        result = run_reverse_image_search(
+            image_file.filename,
+            image_bytes,
+            image_file.mimetype,
         )
-        upload_res.raise_for_status()
-        upload_data = upload_res.json()
 
-        if not upload_data.get("success"):
-            return jsonify({
-                "error": "Image upload failed",
-                "details": upload_data
-            }), 500
+        return jsonify(result)
 
-        image_url = upload_data["data"]["url"]
-
-        # Step 2: reverse search via SerpApi
-        search_res = requests.get(
-            "https://serpapi.com/search",
-            params={
-                "engine": "google_reverse_image",
-                "image_url": image_url,
-                "api_key": SERPAPI_KEY,
-            },
-            timeout=30,
-        )
-        search_res.raise_for_status()
-        search_data = search_res.json()
-
-        image_results = search_data.get("image_results", [])
-
+    except RuntimeError as exc:
         return jsonify({
-            "success": True,
-            "uploaded_image_url": image_url,
-            "matches_found": len(image_results),
-            "image_results": image_results,
-        })
+            "error": "Reverse image search failed",
+            "details": str(exc)
+        }), 500
+    except requests.RequestException as exc:
+        return jsonify({
+            "error": "External API request failed",
+            "details": str(exc)
+        }), 500
+    except Exception as exc:
+        return jsonify({
+            "error": "Reverse image search failed",
+            "details": str(exc)
+        }), 500
+
+
+@app.route("/certificates/<certificate_id>/reverse-search", methods=["POST"])
+def reverse_search_registered_artwork(certificate_id):
+    try:
+        user = get_authenticated_user()
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
+
+    if not IMGBB_KEY or not SERPAPI_KEY:
+        return jsonify({"error": "Missing IMGBB_KEY or SERPAPI_KEY in backend environment"}), 500
+
+    try:
+        cert_result = supabase_admin.table("certificates") \
+            .select("*") \
+            .eq("id", certificate_id) \
+            .single() \
+            .execute()
+        cert = cert_result.data
+        if not cert:
+            return jsonify({"error": "Certificate not found"}), 404
+
+        payload = build_certificate_detail_payload(cert)
+        artwork = payload.get("artwork") or {}
+        if artwork.get("artist_id") != user.id:
+            return jsonify({"error": "Forbidden"}), 403
+
+        cert_data = payload.get("cert_data") or {}
+        artwork_url = ((cert_data.get("artwork") or {}).get("url"))
+        if not artwork_url:
+            return jsonify({"error": "No registered artwork URL found for this certificate"}), 400
+
+        file_name, image_bytes, mime_type = load_image_bytes_from_asset_url(artwork_url)
+        result = run_reverse_image_search(file_name, image_bytes, mime_type)
+        result["source"] = "registered_artwork"
+        result["certificate_id"] = certificate_id
+        result["artwork_url"] = artwork_url
+        return jsonify(result)
 
     except requests.RequestException as exc:
         return jsonify({

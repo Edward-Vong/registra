@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
 import { createUploadChallenge, registerWithCert } from '../api'
+import Navbar from '../components/Navbar'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -10,14 +11,6 @@ const styles = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   .upload-page { font-family: 'DM Sans', sans-serif; background: #F7F5F0; min-height: 100vh; color: #1a1a1a; }
-
-  .nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 48px; border-bottom: 1px solid #e0ddd6;
-    background: #F7F5F0; position: sticky; top: 0; z-index: 10;
-  }
-  .logo { font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px; color: #1a1a1a; cursor: pointer; }
-  .logo span { color: #2D7A5A; }
   .btn-outline { border: 1px solid #1a1a1a; background: transparent; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a; }
   .btn-primary { background: #2D7A5A; color: #fff; border: none; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
   .btn-primary:hover { background: #235f45; }
@@ -148,9 +141,58 @@ function formatBytes(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+const PROOF_RULES = {
+  timelapse: {
+    maxSize: 500 * 1024 * 1024,
+    extensions: ['.mp4', '.mov', '.webm', '.mkv', '.avi'],
+    mimePrefixes: ['video/'],
+    accept: 'video/*,.mp4,.mov,.webm,.mkv,.avi',
+    hint: 'Allowed: MP4, MOV, WEBM, MKV, AVI (up to 500MB).',
+  },
+  layered: {
+    maxSize: 250 * 1024 * 1024,
+    extensions: ['.psd', '.psb', '.xcf', '.kra', '.procreate', '.clip'],
+    mimePrefixes: [],
+    accept: '.psd,.psb,.xcf,.kra,.procreate,.clip',
+    hint: 'Allowed: PSD, PSB, XCF, KRA, PROCREATE, CLIP (up to 250MB).',
+  },
+  wip: {
+    maxSize: 25 * 1024 * 1024,
+    extensions: ['.png', '.jpg', '.jpeg', '.webp', '.heic'],
+    mimePrefixes: ['image/'],
+    accept: 'image/*,.png,.jpg,.jpeg,.webp,.heic',
+    hint: 'Allowed: PNG, JPG, JPEG, WEBP, HEIC (up to 25MB).',
+  },
+}
+
+function getFileExtension(fileName) {
+  const idx = fileName.lastIndexOf('.')
+  return idx === -1 ? '' : fileName.slice(idx).toLowerCase()
+}
+
+function validateProofFile(file, selectedType) {
+  const rules = PROOF_RULES[selectedType]
+  if (!rules) return 'Please select a valid proof type first.'
+  if (!file) return 'Please upload a proof file.'
+
+  if (file.size > rules.maxSize) {
+    return `File is too large for ${selectedType} proof. Max size is ${formatBytes(rules.maxSize)}.`
+  }
+
+  const ext = getFileExtension(file.name)
+  const extAllowed = rules.extensions.includes(ext)
+  const mimeAllowed = rules.mimePrefixes.some(prefix => (file.type || '').startsWith(prefix))
+
+  if (!extAllowed && !mimeAllowed) {
+    return `Invalid file format for ${selectedType} proof. ${rules.hint}`
+  }
+
+  return null
+}
+
 export default function Upload() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [dragover, setDragover] = useState(false)
   const [artworkFile, setArtworkFile] = useState(null)
   const [certFile, setCertFile] = useState(null)
@@ -158,6 +200,7 @@ export default function Upload() {
   const [certError, setCertError] = useState(null)
   const [proofType, setProofType] = useState('wip')
   const [proofFile, setProofFile] = useState(null)
+  const [proofError, setProofError] = useState(null)
   const [title, setTitle] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [hash, setHash] = useState(null)         // computed from artwork file
@@ -167,6 +210,39 @@ export default function Upload() {
   const [challenge, setChallenge] = useState(null)
   const [challengeLoading, setChallengeLoading] = useState(false)
 
+  const requestChallenge = async ({ silent = false, retries = 1 } = {}) => {
+    if (!user?.id) return null
+
+    let lastError = null
+    setChallengeLoading(true)
+
+    try {
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          const accessToken = session?.access_token
+          if (!accessToken) throw new Error('Not authenticated')
+          const nextChallenge = await createUploadChallenge(accessToken)
+          setChallenge(nextChallenge)
+          if (!silent) setSubmitError(null)
+          return nextChallenge
+        } catch (error) {
+          lastError = error
+          if (attempt < retries) {
+            await new Promise((resolve) => setTimeout(resolve, 350))
+          }
+        }
+      }
+
+      if (!silent) {
+        setSubmitError(lastError?.message || 'Failed to create upload challenge. Please refresh and try again.')
+      }
+      return null
+    } finally {
+      setChallengeLoading(false)
+    }
+  }
+
   // null = not yet checked, true = match, false = mismatch
   const hashMatch = hash && cert ? hash === cert.image_hash : null
   const challengeMatch = cert && challenge
@@ -175,31 +251,10 @@ export default function Upload() {
 
   useEffect(() => {
     async function loadChallenge() {
-      if (!user?.id) return
-      setChallengeLoading(true)
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const accessToken = session?.access_token
-        if (!accessToken) return
-        const nextChallenge = await createUploadChallenge(accessToken)
-        setChallenge(nextChallenge)
-      } catch (error) {
-        setSubmitError(error.message || 'Failed to create upload challenge. Register a signing key in your profile first.')
-      } finally {
-        setChallengeLoading(false)
-      }
+      await requestChallenge({ silent: true, retries: 1 })
     }
     loadChallenge()
   }, [user?.id])
-
-  const handleLogout = async () => {
-    try {
-      await logout()
-      navigate('/login')
-    } catch {
-      setSubmitError('Failed to logout. Please try again.')
-    }
-  }
 
   const handleFileDrop = async (e) => {
     e.preventDefault()
@@ -235,9 +290,16 @@ export default function Upload() {
   }
 
   const handleSubmit = async () => {
+    const currentProofError = validateProofFile(proofFile, proofType)
+    if (currentProofError) {
+      setProofError(currentProofError)
+      return
+    }
+
     if (!artworkFile || !cert || !title || !user?.id || hashMatch !== true) return
 
     setSubmitError(null)
+    setProofError(null)
     setIsSubmitting(true)
 
     try {
@@ -265,10 +327,10 @@ export default function Upload() {
       setTitle('')
       setProofType('wip')
       setProofFile(null)
+      setProofError(null)
       setCertError(null)
       try {
-        const nextChallenge = await createUploadChallenge(accessToken)
-        setChallenge(nextChallenge)
+        await requestChallenge({ silent: false, retries: 0 })
       } catch {
         // Keep success path smooth even if auto-refreshing the next challenge fails.
       }
@@ -286,17 +348,41 @@ export default function Upload() {
     { key: 'wip', icon: '📸', title: 'WIP screenshots', sub: 'Progress photos taken while drawing' },
   ]
 
+  const proofRules = PROOF_RULES[proofType] || PROOF_RULES.wip
+
+  const handleProofTypeSelect = (type) => {
+    setProofType(type)
+
+    if (!proofFile) {
+      setProofError(null)
+      return
+    }
+
+    const validationError = validateProofFile(proofFile, type)
+    setProofError(validationError)
+  }
+
+  const handleProofUpload = (e) => {
+    const nextFile = e.target.files?.[0] || null
+    if (!nextFile) return
+
+    const validationError = validateProofFile(nextFile, proofType)
+    if (validationError) {
+      setProofFile(null)
+      setProofError(validationError)
+      return
+    }
+
+    setProofFile(nextFile)
+    setProofError(null)
+    setSubmitError(null)
+  }
+
   return (
     <>
       <style>{styles}</style>
       <div className="upload-page">
-        <nav className="nav">
-          <div className="logo" onClick={() => navigate('/')}>Regist<span>ra</span></div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn-outline" onClick={() => navigate('/dashboard')}>my portfolio</button>
-            <button className="btn-outline" onClick={handleLogout}>logout</button>
-          </div>
-        </nav>
+        <Navbar />
 
         <div className="upload-container">
           <div className="page-header">
@@ -336,18 +422,7 @@ export default function Upload() {
                 </div>
                 <button className="btn-outline" type="button" onClick={async () => {
                   setSubmitError(null)
-                  setChallengeLoading(true)
-                  try {
-                    const { data: { session } } = await supabase.auth.getSession()
-                    const accessToken = session?.access_token
-                    if (!accessToken) throw new Error('Not authenticated')
-                    const nextChallenge = await createUploadChallenge(accessToken)
-                    setChallenge(nextChallenge)
-                  } catch (error) {
-                    setSubmitError(error.message || 'Failed to refresh challenge.')
-                  } finally {
-                    setChallengeLoading(false)
-                  }
+                  await requestChallenge({ silent: false, retries: 0 })
                 }}>{challengeLoading ? 'Refreshing...' : 'Refresh challenge'}</button>
               </div>
               <div style={{ marginTop: 12 }}>
@@ -481,7 +556,7 @@ export default function Upload() {
               </div>
               <div className="proof-options">
                 {proofOptions.map(opt => (
-                  <div key={opt.key} className={`proof-option ${proofType === opt.key ? 'selected' : ''}`} onClick={() => setProofType(opt.key)}>
+                  <div key={opt.key} className={`proof-option ${proofType === opt.key ? 'selected' : ''}`} onClick={() => handleProofTypeSelect(opt.key)}>
                     <div className="p-icon">{opt.icon}</div>
                     <div className="p-title">{opt.title}</div>
                     <div className="p-sub">{opt.sub}</div>
@@ -489,11 +564,13 @@ export default function Upload() {
                 ))}
               </div>
               <div className="proof-upload">
-                <button className="proof-upload-btn" onClick={() => document.getElementById('proof-input').click()}>
+                <button className="proof-upload-btn" type="button" onClick={() => document.getElementById('proof-input').click()}>
                   <span>↑</span> Upload proof file
                 </button>
-                <input id="proof-input" type="file" style={{ display: 'none' }} onChange={(e) => setProofFile(e.target.files[0] || null)} />
+                <input id="proof-input" type="file" accept={proofRules.accept} style={{ display: 'none' }} onChange={handleProofUpload} />
+                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>{proofRules.hint}</div>
                 {proofFile && <div className="proof-uploaded">✓ {proofFile.name} uploaded</div>}
+                {proofError && <div className="cert-status cert-err" style={{ marginTop: 8 }}>✗ {proofError}</div>}
               </div>
             </div>
           </div>
@@ -502,7 +579,7 @@ export default function Upload() {
             <p className="submit-note">By registering, you confirm this is your original work. We verify your account-bound signing key, the one-time challenge, the artwork hash, and the proof hash.</p>
             <button
               className="submit-btn"
-              disabled={!challenge || !artworkFile || !cert || !proofFile || !title || hashMatch !== true || challengeMatch !== true}
+              disabled={!challenge || !artworkFile || !cert || !proofFile || !!proofError || !title || hashMatch !== true || challengeMatch !== true}
               onClick={handleSubmit}
             >
               {isSubmitting ? 'Verifying & registering...' : 'Register & certify →'}
