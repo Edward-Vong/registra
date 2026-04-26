@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { useAuth } from '../context/AuthContext'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -32,15 +33,31 @@ const styles = `
 
 export default function Register() {
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
   const [form, setForm] = useState({ firstName: '', lastName: '', username: '', email: '', password: '' })
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!loading && user) {
+      navigate('/dashboard')
+    }
+  }, [user, loading, navigate])
 
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
   const handleRegister = async (e) => {
     e.preventDefault()
-    if (!form.email || !form.password || !form.username) { setError('Please fill in all required fields.'); return }
-    if (form.password.length < 6) { setError('Password must be at least 6 characters.'); return }
+    setError(null)
+
+    if (!form.email || !form.password || !form.username) {
+      setError('Please fill in all required fields.')
+      return
+    }
+
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
 
     const { error } = await supabase.auth.signUp({
       email: form.email,

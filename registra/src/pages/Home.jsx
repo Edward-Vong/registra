@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
+import Navbar from '../components/Navbar'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -8,16 +10,6 @@ const styles = `
 
   .home { font-family: 'DM Sans', sans-serif; background: #F7F5F0; min-height: 100vh; color: #1a1a1a; }
 
-  .nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 48px; border-bottom: 1px solid #e0ddd6;
-    background: #F7F5F0; position: sticky; top: 0; z-index: 10;
-  }
-  .logo { font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px; color: #1a1a1a; }
-  .logo span { color: #2D7A5A; }
-  .nav-links { display: flex; gap: 32px; align-items: center; }
-  .nav-link { font-size: 13px; color: #666; cursor: pointer; font-weight: 400; text-decoration: none; }
-  .nav-link:hover { color: #1a1a1a; }
   .btn-outline { border: 1px solid #1a1a1a; background: transparent; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a; }
   .btn-outline:hover { background: #1a1a1a; color: #F7F5F0; }
   .btn-primary { background: #2D7A5A; color: #fff; border: none; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
@@ -91,24 +83,18 @@ const styles = `
 
 export default function Homepage() {
   const navigate = useNavigate()
+  const { user, loading } = useAuth()
   const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <>
       <style>{styles}</style>
       <div className="home" style={{ opacity: mounted ? 1 : 0, transition: 'opacity 0.4s' }}>
-
-        <nav className="nav">
-          <div className="logo">Regist<span>ra</span></div>
-          <div className="nav-links">
-            <a className="nav-link" onClick={() => navigate ('/about')}>how it works</a>
-            <a className="nav-link" onClick={() => navigate ('/upload')}>upload</a>
-            <a className="nav-link">api</a>
-            <button className="btn-outline" onClick={() => navigate('/login')}>sign in</button>
-            <button className="btn-primary" onClick={() => navigate('/register')}>get started</button>
-          </div>
-        </nav>
+        {!loading && <Navbar loggedIn={!!user} />}
 
         <section className="hero">
           <div className="hero-left">
@@ -116,8 +102,20 @@ export default function Homepage() {
             <h1 className="hero-title">Your art.<br /><em>Verified.</em><br />Always.</h1>
             <p className="hero-sub">Registra automatically fingerprints your work as you create it — building an unbreakable proof of authorship that travels with your art across the internet.</p>
             <div className="hero-actions">
-              <button className="btn-primary" style={{ padding: '12px 28px', fontSize: '14px' }} onClick={() => navigate('/register')}>register your work</button>
-              <button className="btn-outline" style={{ padding: '12px 28px', fontSize: '14px' }} onClick={() => navigate('/about')}>see how it works</button>
+              <button
+                className="btn-primary"
+                style={{ padding: '12px 28px', fontSize: '14px' }}
+                onClick={() => navigate(user ? '/upload' : '/register')}
+              >
+                {user ? 'upload your work' : 'register your work'}
+              </button>
+              <button
+                className="btn-outline"
+                style={{ padding: '12px 28px', fontSize: '14px' }}
+                onClick={() => navigate('/about')}
+              >
+                see how it works
+              </button>
             </div>
             <p className="hero-note">Free for independent artists — no credit card required</p>
           </div>
@@ -183,9 +181,8 @@ export default function Homepage() {
 
         <footer className="footer">
           <div className="footer-logo">Regist<span>ra</span></div>
-          <div className="footer-note">© 2026 Registra — art certification authority</div>
+          <div className="footer-note">Proof for the people who make things.</div>
         </footer>
-
       </div>
     </>
   )
