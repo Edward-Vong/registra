@@ -9,23 +9,61 @@ const styles = `
     background: #F7F5F0; position: sticky; top: 0; z-index: 10;
     font-family: 'DM Sans', sans-serif;
   }
-  .nav-logo { font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px; color: #1a1a1a; cursor: pointer; }
+  .nav-logo {
+    font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px;
+    color: #1a1a1a; cursor: pointer;
+    transition: transform 0.18s ease, color 0.18s ease;
+  }
   .nav-logo span { color: #2D7A5A; }
+  .nav-logo:hover { transform: scale(1.04); }
+
   .nav-links { display: flex; gap: 32px; align-items: center; }
-  .nav-link { font-size: 13px; color: #666; cursor: pointer; font-weight: 400; text-decoration: none; background: none; border: none; font-family: 'DM Sans', sans-serif; }
-  .nav-link:hover { color: #1a1a1a; }
+
+  .nav-link {
+    font-size: 13px; color: #666; cursor: pointer; font-weight: 400;
+    text-decoration: none; background: none; border: none; font-family: 'DM Sans', sans-serif;
+    transition: transform 0.18s ease, color 0.18s ease;
+    transform-origin: center;
+  }
+  .nav-link:hover {
+    color: #1a1a1a;
+    transform: scale(1.08);
+  }
+
   .nav-user { display: inline-flex; align-items: center; gap: 10px; }
+
   .nav-avatar {
     width: 36px; height: 36px; border-radius: 999px; border: 1px solid #1a1a1a;
     background: linear-gradient(135deg, #f5eee0, #d7eadf); color: #1a1a1a;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
   }
-  .nav-avatar:hover { transform: translateY(-1px); }
-  .nav-btn-outline { border: 1px solid #1a1a1a; background: transparent; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a; }
-  .nav-btn-outline:hover { background: #1a1a1a; color: #F7F5F0; }
-  .nav-btn-primary { background: #2D7A5A; color: #fff; border: none; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-  .nav-btn-primary:hover { background: #235f45; }
+  .nav-avatar:hover {
+    transform: scale(1.08) translateY(-1px);
+  }
+
+  .nav-btn-outline {
+    border: 1px solid #1a1a1a; background: transparent; padding: 8px 20px; border-radius: 2px;
+    font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a;
+    transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+    transform-origin: center;
+  }
+  .nav-btn-outline:hover {
+    background: #1a1a1a; color: #F7F5F0;
+    transform: scale(1.06);
+  }
+
+  .nav-btn-primary {
+    background: #2D7A5A; color: #fff; border: none; padding: 8px 20px; border-radius: 2px;
+    font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif;
+    transition: transform 0.18s ease, background 0.18s ease;
+    transform-origin: center;
+  }
+  .nav-btn-primary:hover {
+    background: #235f45;
+    transform: scale(1.06);
+  }
 `
 
 export default function Navbar({ rightExtra = null }) {
@@ -65,9 +103,6 @@ export default function Navbar({ rightExtra = null }) {
               </button>
             </>
           )}
-
-          <button className="nav-link">api</button>
-
           {user ? (
             <>
               <div className="nav-user">

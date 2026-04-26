@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../supabase'
 import { createUploadChallenge, registerWithCert } from '../api'
+import Navbar from '../components/Navbar'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -11,17 +12,6 @@ const styles = `
 
   .upload-page { font-family: 'DM Sans', sans-serif; background: #F7F5F0; min-height: 100vh; color: #1a1a1a; }
 
-  .nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 48px; border-bottom: 1px solid #e0ddd6;
-    background: #F7F5F0; position: sticky; top: 0; z-index: 10;
-  }
-  .logo { font-family: 'DM Serif Display', serif; font-size: 20px; letter-spacing: -0.3px; color: #1a1a1a; cursor: pointer; }
-  .logo span { color: #2D7A5A; }
-  .btn-outline { border: 1px solid #1a1a1a; background: transparent; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a; }
-  .btn-primary { background: #2D7A5A; color: #fff; border: none; padding: 8px 20px; border-radius: 2px; font-size: 13px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
-  .btn-primary:hover { background: #235f45; }
-  .btn-primary:disabled { background: #aaa; cursor: not-allowed; }
 
   .upload-container { max-width: 720px; margin: 0 auto; padding: 64px 24px; }
 
@@ -290,13 +280,7 @@ export default function Upload() {
     <>
       <style>{styles}</style>
       <div className="upload-page">
-        <nav className="nav">
-          <div className="logo" onClick={() => navigate('/')}>Regist<span>ra</span></div>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn-outline" onClick={() => navigate('/dashboard')}>my portfolio</button>
-            <button className="btn-outline" onClick={handleLogout}>logout</button>
-          </div>
-        </nav>
+        <Navbar />
 
         <div className="upload-container">
           <div className="page-header">
