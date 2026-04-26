@@ -33,27 +33,17 @@ import os
 import datetime
 import sys
 
-try:
-    from Crypto.PublicKey import RSA
-    from Crypto.Signature import PKCS1_v1_5
-    from Crypto.Hash import SHA256
-except Exception:
-    RSA = None
-    PKCS1_v1_5 = None
-    SHA256 = None
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "site-packages"))
+
+from Crypto.PublicKey import RSA
+from Crypto.Signature import PKCS1_v1_5
+from Crypto.Hash import SHA256
 
 PLUGIN_PROC = "plug-in-export-with-authenticity"
 PLUGIN_BINARY = "proof-of-process"
 KEY_DIR_NAME = ".gimp_proof_of_process"
 PRIVATE_KEY_FILE = "private_key.pem"
 PUBLIC_KEY_FILE = "public_key.pem"
-
-
-def _ensure_crypto_available():
-    if RSA is None or PKCS1_v1_5 is None or SHA256 is None:
-        raise RuntimeError(
-            "Missing Crypto library. Install PyCryptodome/PyCrypto for GIMP's Python environment."
-        )
 
 
 def _key_dir():
@@ -106,8 +96,6 @@ def _rsa_import(private_pem):
 
 
 def _ensure_keys():
-    _ensure_crypto_available()
-
     key_dir = _key_dir()
     private_path, public_path = _key_paths()
 

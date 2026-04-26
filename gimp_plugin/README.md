@@ -15,6 +15,14 @@ The certificate includes:
 ## Files
 
 - `proof_of_process.py` - GIMP 3 Python plugin script
+- `install_plugin.bat` - One-click Windows installer
+
+## One-Click Windows Install
+
+1. Double-click `install_plugin.bat` in this folder.
+2. The script copies `proof_of_process.py` to:
+   - `%APPDATA%\\GIMP\\3.0\\plug-ins\\proof_of_process\\proof_of_process.py`
+3. Restart GIMP 3.2.
 
 ## GIMP 3.2 Setup (Python 3)
 
