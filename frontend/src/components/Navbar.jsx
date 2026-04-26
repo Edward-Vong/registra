@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
@@ -31,6 +32,7 @@ const styles = `
   }
 
   .nav-user { display: inline-flex; align-items: center; gap: 10px; }
+  .nav-user-wrap { position: relative; }
 
   .nav-avatar {
     width: 36px; height: 36px; border-radius: 999px; border: 1px solid #1a1a1a;
@@ -39,8 +41,44 @@ const styles = `
     font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif;
     transition: transform 0.18s ease, box-shadow 0.18s ease;
   }
-  .nav-avatar:hover {
-    transform: scale(1.08) translateY(-1px);
+  .nav-avatar:hover { transform: scale(1.08) translateY(-1px); }
+
+  .nav-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    min-width: 190px;
+    background: #fff;
+    border: 1px solid #e0ddd6;
+    border-radius: 4px;
+    box-shadow: 0 10px 26px rgba(26, 26, 26, 0.1);
+    padding: 8px;
+    z-index: 20;
+  }
+  .nav-menu-item {
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 9px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #333;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .nav-menu-item:hover { background: #f5f3ee; }
+  .nav-menu-user {
+    padding: 9px 10px;
+    font-size: 11px;
+    color: #8a857b;
+    border-bottom: 1px solid #efece6;
+    margin-bottom: 4px;
+  }
+  .nav-menu-divider {
+    height: 1px;
+    background: #efece6;
+    margin: 6px 0;
   }
 
   .nav-btn-outline {
@@ -69,7 +107,28 @@ const styles = `
 export default function Navbar({ rightExtra = null }) {
   const navigate = useNavigate()
   const { user, username, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
   const avatarText = (username || user?.email || 'U').slice(0, 2).toUpperCase()
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [menuOpen])
 
   const handleLogout = async () => {
     try {
@@ -93,6 +152,10 @@ export default function Navbar({ rightExtra = null }) {
             how it works
           </button>
 
+          <button className="nav-link" onClick={() => navigate('/gallery')}>
+            gallery
+          </button>
+
           {user && (
             <>
               <button className="nav-link" onClick={() => navigate('/upload')}>
@@ -103,18 +166,13 @@ export default function Navbar({ rightExtra = null }) {
               </button>
             </>
           )}
+
+          <button className="nav-link" onClick={() => navigate('/api')}>
+            api
+          </button>
+
           {user ? (
             <>
-              <div className="nav-user">
-                <button
-                  className="nav-avatar"
-                  title={username || 'Profile settings'}
-                  onClick={() => navigate('/profile')}
-                >
-                  {avatarText}
-                </button>
-              </div>
-
               <button
                 className="nav-btn-outline"
                 onClick={() => navigate('/dashboard')}
@@ -122,9 +180,49 @@ export default function Navbar({ rightExtra = null }) {
                 dashboard
               </button>
 
-              <button className="nav-btn-outline" onClick={handleLogout}>
-                logout
-              </button>
+              <div className="nav-user nav-user-wrap" ref={menuRef}>
+                <button
+                  className="nav-avatar"
+                  title={username || 'Profile'}
+                  onClick={() => setMenuOpen((prev) => !prev)}
+                >
+                  {avatarText}
+                </button>
+
+                {menuOpen && (
+                  <div className="nav-menu">
+                    <div className="nav-menu-user">Signed in as @{username || user?.email?.split('@')[0] || 'artist'}</div>
+                    <button
+                      className="nav-menu-item"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        navigate(`/artist/${encodeURIComponent(username || user?.email?.split('@')[0] || 'artist')}`)
+                      }}
+                    >
+                      public profile
+                    </button>
+                    <button
+                      className="nav-menu-item"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        navigate('/profile')
+                      }}
+                    >
+                      profile settings
+                    </button>
+                    <div className="nav-menu-divider" />
+                    <button
+                      className="nav-menu-item"
+                      onClick={async () => {
+                        setMenuOpen(false)
+                        await handleLogout()
+                      }}
+                    >
+                      logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <>

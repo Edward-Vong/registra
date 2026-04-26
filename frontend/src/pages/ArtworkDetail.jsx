@@ -40,6 +40,9 @@ const styles = `
   .stack { display: grid; gap: 18px; }
   .error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; border-radius: 4px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; }
   .loading { color: #777; font-size: 14px; }
+  .card-actions { margin-top: 14px; display: flex; gap: 10px; align-items: center; }
+  .action-btn { border: 1px solid #1a1a1a; background: #fff; color: #1a1a1a; padding: 8px 14px; border-radius: 2px; font-size: 12px; cursor: pointer; }
+  .action-btn:hover { background: #1a1a1a; color: #fff; }
   @media (max-width: 900px) {
     .layout { grid-template-columns: 1fr; }
   }
@@ -93,6 +96,8 @@ export default function ArtworkDetail() {
 
   const artworkUrl = certData?.artwork?.url || null
   const proofUrl = certData?.proof?.url || null
+  const proofType = certData?.proof?.type || null
+  const proofFileName = certData?.proof?.file_name || null
   const artistUsername = user.username || certData?.submitted_by?.username || 'Unknown artist'
 
   const certJson = useMemo(() => JSON.stringify(certData?.gimp_certificate || certData || {}, null, 2), [certData])
@@ -138,27 +143,42 @@ export default function ArtworkDetail() {
                       </div>
                     )}
                   </div>
+
+                  {!isAdminView && (
+                    <>
+                      <div className="card-actions">
+                        <button
+                          className="action-btn"
+                          onClick={() => navigate('/reversesearch', { state: { certificateId, title: artwork.title || 'Untitled', artworkUrl: artworkUrl || null } })}
+                        >
+                          Reverse search this artwork
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-head">GIMP Certificate</div>
+                <div className="card-head">Proof</div>
                 <div className="card-body meta-list">
                   <div className="meta-item">
-                    <div className="meta-k">Plugin</div>
-                    <div className="meta-v">{certData?.gimp_certificate?.plugin || 'Proof of Process'}</div>
+                    <div className="meta-k">Type</div>
+                    <div className="meta-v">{proofType || 'n/a'}</div>
                   </div>
                   <div className="meta-item">
-                    <div className="meta-k">Signed at</div>
-                    <div className="meta-v">{certData?.gimp_certificate?.timestamp_utc || 'n/a'}</div>
+                    <div className="meta-k">File name</div>
+                    <div className="meta-v">{proofFileName || 'n/a'}</div>
                   </div>
                   <div className="meta-item">
-                    <div className="meta-k">Key fingerprint</div>
-                    <div className="meta-v mono" style={{wordBreak:'break-all',fontSize:'11px'}}>{certData?.gimp_certificate?.key_fingerprint || 'n/a'}</div>
-                  </div>
-                  <div className="meta-item">
-                    <div className="meta-k">Signature algorithm</div>
-                    <div className="meta-v">{certData?.gimp_certificate?.signature_algorithm || 'n/a'}</div>
+                    <div className="meta-k">Proof file</div>
+                    <div className="meta-v">
+                      {proofUrl ? (
+                        <a href={proofUrl} target="_blank" rel="noreferrer">Open proof file</a>
+                      ) : (
+                        'No proof file URL stored for this certificate.'
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

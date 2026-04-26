@@ -58,6 +58,14 @@ export async function fetchRecentVerified() {
   return apiRequest('/recent-verified')
 }
 
+export async function fetchVerifiedGallery(limit = 36) {
+  return apiRequest(`/gallery/verified?limit=${encodeURIComponent(limit)}`)
+}
+
+export async function fetchPublicArtistProfile(username) {
+  return apiRequest(`/artists/${encodeURIComponent(username)}`)
+}
+
 function authHeaders(accessToken) {
   return { Authorization: `Bearer ${accessToken}` }
 }
@@ -122,6 +130,13 @@ export async function fetchAdminCertificateDetail(id, accessToken) {
 
 export async function fetchCertificateDetail(id, accessToken) {
   return apiRequest(`/certificates/${encodeURIComponent(id)}/detail`, {
+    headers: authHeaders(accessToken),
+  })
+}
+
+export async function reverseSearchRegisteredArtwork(id, accessToken) {
+  return apiRequest(`/certificates/${encodeURIComponent(id)}/reverse-search`, {
+    method: 'POST',
     headers: authHeaders(accessToken),
   })
 }

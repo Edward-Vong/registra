@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { supabase } from '../supabase'
-import { useAuth } from '../context/AuthContext'
+import { reverseSearchRegisteredArtwork } from '../api'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -54,15 +55,20 @@ const styles = `
   .result-box-text { font-size: 13px; color: #777; line-height: 1.6; font-weight: 300; }
   .result-link { font-size: 12px; color: #2D7A5A; word-break: break-all; margin-top: 8px; display: block; }
   .error-box { background: #fdf0ef; border: 1px solid #f5c6c6; border-radius: 4px; padding: 16px 20px; font-size: 13px; color: #c0392b; }
+  .source-box { background: #f7faf8; border: 1px solid #d8e9de; border-radius: 4px; padding: 12px 14px; margin-bottom: 16px; font-size: 12px; color: #3d5b4b; }
 `
 
 export default function ReverseSearch() {
-  const { user } = useAuth()
+  const location = useLocation()
+  const incomingCertificateId = location.state?.certificateId || null
+  const incomingArtworkTitle = location.state?.title || null
+  const incomingArtworkUrl = location.state?.artworkUrl || null
   const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
+  const [preview, setPreview] = useState(incomingArtworkUrl)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [autoRunDone, setAutoRunDone] = useState(false)
 
   const handleFile = (e) => {
     const f = e.target.files?.[0] || e.dataTransfer?.files?.[0]
@@ -72,6 +78,12 @@ export default function ReverseSearch() {
     setResult(null)
     setError(null)
   }
+
+  useEffect(() => {
+    if (!file) {
+      setPreview(incomingArtworkUrl)
+    }
+  }, [incomingArtworkUrl, file])
 
   const clearFile = () => {
     setFile(null)
@@ -124,11 +136,43 @@ export default function ReverseSearch() {
     }
   }
 
+  useEffect(() => {
+    async function runRegisteredArtworkSearch() {
+      if (!incomingCertificateId || autoRunDone) return
+
+      setLoading(true)
+      setResult(null)
+      setError(null)
+
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          throw new Error(sessionError.message)
+        }
+
+        if (!session?.access_token) {
+          throw new Error('You must be signed in to use reverse image search.')
+        }
+
+        const data = await reverseSearchRegisteredArtwork(incomingCertificateId, session.access_token)
+        setResult(data)
+      } catch (err) {
+        setError(err.message || 'Search failed. Please try again.')
+      } finally {
+        setLoading(false)
+        setAutoRunDone(true)
+      }
+    }
+
+    runRegisteredArtworkSearch()
+  }, [incomingCertificateId, autoRunDone])
+
   return (
     <>
       <style>{styles}</style>
       <div className="rs-page">
-        <Navbar loggedIn={!!user} />
+        <Navbar />
         <div className="container">
           <div className="page-tag">Theft detection</div>
           <h1 className="page-title">Reverse image search</h1>
@@ -136,9 +180,15 @@ export default function ReverseSearch() {
             Upload an image to check whether matching copies appear elsewhere online.
           </p>
 
+          {incomingCertificateId && (
+            <div className="source-box">
+              Running reverse search for your registered artwork{incomingArtworkTitle ? `: ${incomingArtworkTitle}` : ''}. You can still upload another file below.
+            </div>
+          )}
+
           <div className="section-label">Upload image</div>
           <div
-            className={`drop-zone ${file ? 'has-file' : ''}`}
+            className={`drop-zone ${preview ? 'has-file' : ''}`}
             onClick={() => !file && document.getElementById('rs-input').click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
@@ -154,19 +204,31 @@ export default function ReverseSearch() {
               onChange={handleFile}
             />
 
-            {file ? (
+            {preview ? (
               <>
                 <img src={preview} className="preview-img" alt="preview" />
-                <div className="file-name">{file.name}</div>
-                <div
-                  className="file-change"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    clearFile()
-                  }}
-                >
-                  remove
-                </div>
+                <div className="file-name">{file?.name || incomingArtworkTitle || 'Selected artwork'}</div>
+                {file ? (
+                  <div
+                    className="file-change"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearFile()
+                    }}
+                  >
+                    remove
+                  </div>
+                ) : (
+                  <div
+                    className="file-change"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      document.getElementById('rs-input').click()
+                    }}
+                  >
+                    choose a different file
+                  </div>
+                )}
               </>
             ) : (
               <>

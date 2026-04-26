@@ -35,6 +35,9 @@ const styles = `
   .message { font-size: 13px; border-radius: 3px; padding: 12px 14px; margin-bottom: 18px; }
   .message.error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
   .message.success { background: #e8f5ef; border: 1px solid #98d5b6; color: #235f45; }
+  .helper { font-size: 11px; color: #999; margin-top: -8px; margin-bottom: 12px; }
+  .public-link { font-size: 12px; color: #2D7A5A; text-decoration: none; }
+  .public-link:hover { text-decoration: underline; }
   .key-status { padding: 12px 14px; background: #f5f3ee; border: 1px solid #e0ddd6; border-radius: 2px; font-size: 13px; margin-bottom: 16px; }
   .key-status.registered { background: #e8f5ef; border-color: #98d5b6; color: #235f45; }
   @media (max-width: 720px) {
@@ -42,10 +45,39 @@ const styles = `
   }
 `
 
+function normalizeSocialUrl(raw) {
+  const value = (raw || '').trim()
+  if (!value) return ''
+  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  return `https://${value}`
+}
+
+function validateSocialUrl(raw, label) {
+  const value = (raw || '').trim()
+  if (!value) return null
+  const normalized = normalizeSocialUrl(value)
+  try {
+    const url = new URL(normalized)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return `${label} link must start with http:// or https://`
+    }
+    return null
+  } catch {
+    return `${label} link is not a valid URL`
+  }
+}
+
 export default function Profile() {
   const navigate = useNavigate()
   const { user, refreshUser } = useAuth()
-  const [form, setForm] = useState({ username: '', email: '' })
+  const [form, setForm] = useState({
+    username: '',
+    email: '',
+    socialWebsite: '',
+    socialInstagram: '',
+    socialX: '',
+    socialArtstation: '',
+  })
   const [keyFingerprint, setKeyFingerprint] = useState('')
   const [keyLoading, setKeyLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -58,6 +90,10 @@ export default function Profile() {
     setForm({
       username: user.user_metadata?.username || '',
       email: user.email || '',
+      socialWebsite: user.user_metadata?.social_website || '',
+      socialInstagram: user.user_metadata?.social_instagram || '',
+      socialX: user.user_metadata?.social_x || '',
+      socialArtstation: user.user_metadata?.social_artstation || '',
     })
   }, [user])
 
@@ -102,12 +138,25 @@ export default function Profile() {
     setSaving(true)
     try {
       const username = form.username.trim()
+
+      const socialError =
+        validateSocialUrl(form.socialWebsite, 'Website') ||
+        validateSocialUrl(form.socialInstagram, 'Instagram') ||
+        validateSocialUrl(form.socialX, 'X') ||
+        validateSocialUrl(form.socialArtstation, 'ArtStation')
+
+      if (socialError) throw new Error(socialError)
+
       const { error: updateError } = await supabase.auth.updateUser({
         data: {
           username,
           first_name: null,
           last_name: null,
           name: username,
+          social_website: normalizeSocialUrl(form.socialWebsite),
+          social_instagram: normalizeSocialUrl(form.socialInstagram),
+          social_x: normalizeSocialUrl(form.socialX),
+          social_artstation: normalizeSocialUrl(form.socialArtstation),
         },
       })
       if (updateError) throw updateError
@@ -126,6 +175,10 @@ export default function Profile() {
     setForm({
       username: user?.user_metadata?.username || '',
       email: user?.email || '',
+      socialWebsite: user?.user_metadata?.social_website || '',
+      socialInstagram: user?.user_metadata?.social_instagram || '',
+      socialX: user?.user_metadata?.social_x || '',
+      socialArtstation: user?.user_metadata?.social_artstation || '',
     })
   }
 
@@ -171,17 +224,43 @@ export default function Profile() {
         <div className="card">
           <div className="card-head">
             <div className="card-title">Public profile</div>
-            <div className="card-sub">Your username is your public identity everywhere in the product.</div>
+            <div className="card-sub">Your username is your public identity. Social links appear on your artist profile page.</div>
           </div>
           <form className="card-body" onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Username / display name</label>
               <input type="text" value={form.username} onChange={updateField('username')} placeholder="yourname" />
             </div>
+            {form.username.trim() && (
+              <div style={{ marginBottom: 12 }}>
+                <a className="public-link" href={`/artist/${encodeURIComponent(form.username.trim())}`} target="_blank" rel="noreferrer">
+                  View public artist profile →
+                </a>
+              </div>
+            )}
             <div className="form-group">
               <label>Email</label>
               <input type="email" value={form.email} disabled />
             </div>
+            <div className="form-group">
+              <label>Website</label>
+              <input type="text" value={form.socialWebsite} onChange={updateField('socialWebsite')} placeholder="https://your-site.com" />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Instagram</label>
+                <input type="text" value={form.socialInstagram} onChange={updateField('socialInstagram')} placeholder="https://instagram.com/yourhandle" />
+              </div>
+              <div className="form-group">
+                <label>X (Twitter)</label>
+                <input type="text" value={form.socialX} onChange={updateField('socialX')} placeholder="https://x.com/yourhandle" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>ArtStation</label>
+              <input type="text" value={form.socialArtstation} onChange={updateField('socialArtstation')} placeholder="https://www.artstation.com/yourname" />
+            </div>
+            <div className="helper">Tip: you can paste links with or without https://.</div>
             <div className="actions">
               <button type="button" className="btn-outline" onClick={resetForm}>Reset</button>
               <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</button>
