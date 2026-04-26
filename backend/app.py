@@ -251,15 +251,11 @@ def register_with_cert():
     proof_file = request.files.get("proof_file")
     title = request.form.get("title", "").strip()
     cert_str = request.form.get("cert", "")
-    proof_type = request.form.get("proof_type", "").strip()
-    proof_file_name = request.form.get("proof_file_name", "").strip()
 
     if not title:
         return jsonify({"error": "Missing title"}), 400
     if not cert_str:
         return jsonify({"error": "Missing certificate"}), 400
-    if not proof_file:
-        return jsonify({"error": "Missing proof file"}), 400
 
     try:
         cert = json.loads(cert_str)
@@ -269,7 +265,6 @@ def register_with_cert():
     try:
         require_cert_fields(cert, [
             "image_hash",
-            "proof_hash",
             "signature",
             "public_key_pem",
             "key_fingerprint",
@@ -326,36 +321,27 @@ def register_with_cert():
         return jsonify({"error": "Upload challenge nonce does not match"}), 400
 
     image_bytes = file.read()
-    proof_bytes = proof_file.read()
 
     # 1. Verify image hash matches certificate
     computed_hash = hashlib.sha256(image_bytes).hexdigest()
     if computed_hash != cert.get("image_hash"):
         return jsonify({"error": "Image hash does not match certificate"}), 400
 
-    computed_proof_hash = hashlib.sha256(proof_bytes).hexdigest()
-    if computed_proof_hash != cert.get("proof_hash"):
-        return jsonify({"error": "Proof file hash does not match certificate"}), 400
-
     signed_payload = cert.get("signed_payload") or {}
     expected_payload = {
         "image_hash": computed_hash,
-        "proof_hash": computed_proof_hash,
         "challenge_id": cert.get("challenge_id"),
         "challenge_nonce": cert.get("challenge_nonce"),
         "timestamp_utc": signed_payload.get("timestamp_utc") or cert.get("timestamp_utc"),
         "image_file": signed_payload.get("image_file") or cert.get("image_file"),
-        "proof_file": signed_payload.get("proof_file") or proof_file.filename,
         "key_fingerprint": cert.get("key_fingerprint"),
     }
     if signed_payload != expected_payload:
         return jsonify({"error": "Signed payload contents do not match the uploaded assets or challenge"}), 400
 
     artwork_asset = None
-    proof_asset = None
     try:
         artwork_asset = save_uploaded_bytes(file.filename, image_bytes, "artwork", "artworks")
-        proof_asset = save_uploaded_bytes(proof_file.filename, proof_bytes, "proof", "proofs")
     except Exception as exc:
         return jsonify({"error": f"Failed to store upload assets: {exc}"}), 500
 
@@ -384,12 +370,7 @@ def register_with_cert():
             "challenge_nonce": cert.get("challenge_nonce"),
         },
         "artwork": artwork_asset,
-        "proof": {
-            "type": proof_type or None,
-            "file_name": proof_file_name or None,
-            "url": proof_asset.get("url") if proof_asset else None,
-            "sha256": computed_proof_hash,
-        },
+        "proof": None,
     }
 
     # 3. Insert artwork

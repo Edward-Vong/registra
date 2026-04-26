@@ -222,7 +222,7 @@ export default function Upload() {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target.result)
-        if (!parsed.image_hash || !parsed.proof_hash || !parsed.signature || !parsed.public_key_pem || !parsed.challenge_id || !parsed.challenge_nonce || !parsed.signed_payload) {
+        if (!parsed.image_hash || !parsed.signature || !parsed.public_key_pem || !parsed.challenge_id || !parsed.challenge_nonce || !parsed.signed_payload) {
           throw new Error('Missing required fields')
         }
         setCert(parsed)

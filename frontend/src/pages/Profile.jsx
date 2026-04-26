@@ -71,7 +71,7 @@ export default function Profile() {
         const token = session?.access_token
         if (!token) return
         
-        const response = await fetch('http://localhost:5000/account/signing-key', {
+        const response = await fetch('http://localhost:5000/me/signing-key', {
           headers: { 'Authorization': `Bearer ${token}` },
         })
         const data = await response.json()

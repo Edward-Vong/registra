@@ -142,21 +142,23 @@ export default function ArtworkDetail() {
               </div>
 
               <div className="card">
-                <div className="card-head">Proof of Creation</div>
+                <div className="card-head">GIMP Certificate</div>
                 <div className="card-body meta-list">
                   <div className="meta-item">
-                    <div className="meta-k">Proof type</div>
-                    <div className="meta-v">{certData?.proof?.type || 'Not provided'}</div>
+                    <div className="meta-k">Plugin</div>
+                    <div className="meta-v">{certData?.gimp_certificate?.plugin || 'Proof of Process'}</div>
                   </div>
                   <div className="meta-item">
-                    <div className="meta-k">Proof file</div>
-                    <div className="meta-v">{certData?.proof?.file_name || 'Not provided'}</div>
+                    <div className="meta-k">Signed at</div>
+                    <div className="meta-v">{certData?.gimp_certificate?.timestamp_utc || 'n/a'}</div>
                   </div>
                   <div className="meta-item">
-                    <div className="meta-k">Proof asset</div>
-                    <div className="meta-v">
-                      {proofUrl ? <a href={proofUrl} target="_blank" rel="noreferrer">Open proof file</a> : 'No proof file URL stored'}
-                    </div>
+                    <div className="meta-k">Key fingerprint</div>
+                    <div className="meta-v mono" style={{wordBreak:'break-all',fontSize:'11px'}}>{certData?.gimp_certificate?.key_fingerprint || 'n/a'}</div>
+                  </div>
+                  <div className="meta-item">
+                    <div className="meta-k">Signature algorithm</div>
+                    <div className="meta-v">{certData?.gimp_certificate?.signature_algorithm || 'n/a'}</div>
                   </div>
                 </div>
               </div>
