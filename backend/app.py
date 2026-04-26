@@ -13,6 +13,7 @@ import secrets
 import uuid
 from werkzeug.utils import secure_filename
 import resend
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -22,6 +23,8 @@ ARTWORK_UPLOAD_DIR = os.path.join(UPLOAD_DIR, "artworks")
 PROOF_UPLOAD_DIR = os.path.join(UPLOAD_DIR, "proofs")
 os.makedirs(ARTWORK_UPLOAD_DIR, exist_ok=True)
 os.makedirs(PROOF_UPLOAD_DIR, exist_ok=True)
+IMGBB_KEY = os.getenv("IMGBB_KEY")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
 
 def parse_json_value(value):
@@ -994,6 +997,88 @@ def confirm_signing_key_reset():
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
+# ------------------------
+# REVERSE IMAGE SEARCH
+# ------------------------
+@app.route("/reverse-search", methods=["POST"])
+def reverse_search():
+    try:
+        user = get_authenticated_user()
+    except PermissionError as e:
+        return jsonify({"error": str(e)}), 401
+
+    if not IMGBB_KEY or not SERPAPI_KEY:
+        return jsonify({"error": "Missing IMGBB_KEY or SERPAPI_KEY in backend environment"}), 500
+
+    if "image" not in request.files:
+        return jsonify({"error": "No image file uploaded"}), 400
+
+    image_file = request.files["image"]
+
+    if not image_file or image_file.filename == "":
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        image_bytes = image_file.read()
+        if not image_bytes:
+            return jsonify({"error": "Empty file"}), 400
+
+        # Step 1: upload to imgbb
+        upload_res = requests.post(
+            "https://api.imgbb.com/1/upload",
+            params={"key": IMGBB_KEY},
+            files={
+                "image": (
+                    image_file.filename,
+                    image_bytes,
+                    image_file.mimetype or "application/octet-stream",
+                )
+            },
+            timeout=30,
+        )
+        upload_res.raise_for_status()
+        upload_data = upload_res.json()
+
+        if not upload_data.get("success"):
+            return jsonify({
+                "error": "Image upload failed",
+                "details": upload_data
+            }), 500
+
+        image_url = upload_data["data"]["url"]
+
+        # Step 2: reverse search via SerpApi
+        search_res = requests.get(
+            "https://serpapi.com/search",
+            params={
+                "engine": "google_reverse_image",
+                "image_url": image_url,
+                "api_key": SERPAPI_KEY,
+            },
+            timeout=30,
+        )
+        search_res.raise_for_status()
+        search_data = search_res.json()
+
+        image_results = search_data.get("image_results", [])
+
+        return jsonify({
+            "success": True,
+            "uploaded_image_url": image_url,
+            "matches_found": len(image_results),
+            "image_results": image_results,
+        })
+
+    except requests.RequestException as exc:
+        return jsonify({
+            "error": "External API request failed",
+            "details": str(exc)
+        }), 500
+    except Exception as exc:
+        return jsonify({
+            "error": "Reverse image search failed",
+            "details": str(exc)
+        }), 500
 
 # ------------------------
 # RUN SERVER

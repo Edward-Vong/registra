@@ -13,6 +13,7 @@ import ResetKey from './pages/ResetKey'
 import ProtectedRoute from './components/ProtectedRoute'
 import VerifiedRoute from './components/VerifiedRoute'
 import AdminRoute from './components/AdminRoute'
+import ReverseSearch from './pages/ReverseSearch'
 
 export default function App() {
   return (
@@ -29,6 +30,9 @@ export default function App() {
         } />
         <Route path="/upload" element={
           <VerifiedRoute><Upload /></VerifiedRoute>
+        } />
+        <Route path="/reversesearch" element={
+          <VerifiedRoute><ReverseSearch /></VerifiedRoute>
         } />
         <Route path="/profile" element={
           <VerifiedRoute><Profile /></VerifiedRoute>

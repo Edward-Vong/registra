@@ -38,7 +38,7 @@ export default function Navbar({ rightExtra = null }) {
       await logout()
       navigate('/login')
     } catch {
-      // Keep UX simple for now; auth listener will still handle session changes.
+      // auth listener should still update UI
     }
   }
 
@@ -46,10 +46,26 @@ export default function Navbar({ rightExtra = null }) {
     <>
       <style>{styles}</style>
       <nav className="navbar">
-        <div className="nav-logo" onClick={() => navigate('/')}>Regist<span>ra</span></div>
+        <div className="nav-logo" onClick={() => navigate('/')}>
+          Regist<span>ra</span>
+        </div>
+
         <div className="nav-links">
-          <button className="nav-link" onClick={() => navigate('/about')}>how it works</button>
-          <button className="nav-link" onClick={() => navigate('/upload')}>upload</button>
+          <button className="nav-link" onClick={() => navigate('/about')}>
+            how it works
+          </button>
+
+          {user && (
+            <>
+              <button className="nav-link" onClick={() => navigate('/upload')}>
+                upload
+              </button>
+              <button className="nav-link" onClick={() => navigate('/reversesearch')}>
+                reverse search
+              </button>
+            </>
+          )}
+
           <button className="nav-link">api</button>
 
           {user ? (
@@ -63,17 +79,26 @@ export default function Navbar({ rightExtra = null }) {
                   {avatarText}
                 </button>
               </div>
-              <button className="nav-btn-outline" onClick={() => navigate('/dashboard')}>
+
+              <button
+                className="nav-btn-outline"
+                onClick={() => navigate('/dashboard')}
+              >
                 dashboard
               </button>
+
               <button className="nav-btn-outline" onClick={handleLogout}>
                 logout
               </button>
             </>
           ) : (
             <>
-              <button className="nav-btn-outline" onClick={() => navigate('/login')}>sign in</button>
-              <button className="nav-btn-primary" onClick={() => navigate('/register')}>get started</button>
+              <button className="nav-btn-outline" onClick={() => navigate('/login')}>
+                sign in
+              </button>
+              <button className="nav-btn-primary" onClick={() => navigate('/register')}>
+                get started
+              </button>
             </>
           )}
 
