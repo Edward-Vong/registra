@@ -103,6 +103,30 @@ def get_certificate(certificate_id):
 
     return jsonify(result.data)
 
+# ------------------------
+# VERIFY
+# ------------------------
+@app.route("/verify", methods=["GET"])
+def verify():
+    hash = request.args.get("hash")
+    if not hash:
+        return jsonify({"error": "Missing hash"}), 400
+
+    result = supabase.table("artworks") \
+        .select("*") \
+        .eq("final_file_hash", hash) \
+        .execute()
+
+    if result.data:
+        artwork = result.data[0]
+        return jsonify({
+            "verified": True,
+            "title": artwork["title"],
+            "artist_id": artwork["artist_id"],
+            "registered": artwork["created_at"]
+        })
+    return jsonify({"verified": False}), 404
+
 
 # ------------------------
 # RUN SERVER

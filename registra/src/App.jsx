@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import About from './pages/About'
+import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
   return (
@@ -13,9 +14,13 @@ export default function App() {
         <Route path="/" element={<Homepage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/upload" element={<Upload />} />
         <Route path="/about" element={<About />} />
+        <Route path="/dashboard" element={
+          <ProtectedRoute><Dashboard /></ProtectedRoute>
+        } />
+        <Route path="/upload" element={
+          <ProtectedRoute><Upload /></ProtectedRoute>
+        } />
       </Routes>
     </BrowserRouter>
   )
