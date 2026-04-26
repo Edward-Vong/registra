@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabase'
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
@@ -21,13 +22,15 @@ const styles = `
   .form-group input { font-size: 14px; padding: 11px 14px; border-radius: 2px; border: 1px solid #d8d5ce; background: #fff; color: #1a1a1a; font-family: 'DM Sans', sans-serif; outline: none; }
   .form-group input:focus { border-color: #2D7A5A; }
   .error { font-size: 12px; color: #c0392b; background: #fdf0ef; border: 1px solid #f5c6c6; border-radius: 2px; padding: 10px 14px; margin-bottom: 16px; }
-  .submit-btn { width: 100%; background: #2D7A5A; color: #fff; border: none; padding: 13px; border-radius: 2px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; margin-top: 8px; }
+  .submit-btn { width: 100%; background: #2D7A5A; color: #fff; border: none; padding: 13px; border-radius: 2px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'DM Sans', sans-serif; }
   .submit-btn:hover { background: #235f45; }
   .auth-switch { font-size: 13px; color: #999; margin-top: 24px; text-align: center; }
   .auth-switch span { color: #2D7A5A; cursor: pointer; font-weight: 500; }
-  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
+  .divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
   .divider-line { flex: 1; height: 1px; background: #e0ddd6; }
   .divider-text { font-size: 11px; color: #ccc; }
+  .google-btn { width: 100%; background: #fff; border: 1px solid #d8d5ce; padding: 13px; border-radius: 2px; font-size: 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; color: #1a1a1a; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .google-btn:hover { border-color: #1a1a1a; }
 `
 
 export default function Login() {
@@ -36,11 +39,20 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault()
     if (!email || !password) { setError('Please fill in all fields.'); return }
-    // TODO: wire up Supabase auth
-    navigate('/dashboard')
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) setError(error.message)
+    else navigate('/dashboard')
+  }
+
+  const handleGoogleLogin = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: 'http://localhost:5173/dashboard' }
+    })
+    if (error) setError(error.message)
   }
 
   return (
@@ -58,6 +70,18 @@ export default function Login() {
             <h1 className="auth-title">Sign in</h1>
             <p className="auth-sub">Access your verified portfolio and certifications.</p>
             {error && <div className="error">{error}</div>}
+
+            <button className="google-btn" type="button" onClick={handleGoogleLogin}>
+              <img src="https://www.google.com/favicon.ico" width="16" height="16" alt="Google" />
+              Continue with Google
+            </button>
+
+            <div className="divider">
+              <div className="divider-line" />
+              <div className="divider-text">or</div>
+              <div className="divider-line" />
+            </div>
+
             <form onSubmit={handleLogin}>
               <div className="form-group">
                 <label>Email</label>
@@ -69,6 +93,7 @@ export default function Login() {
               </div>
               <button className="submit-btn" type="submit">Sign in →</button>
             </form>
+
             <div className="auth-switch">No account? <span onClick={() => navigate('/register')}>Create one free</span></div>
           </div>
         </div>
